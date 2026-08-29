@@ -1,0 +1,12 @@
+apiVersion: backstage.io/v1alpha1
+kind: Resource
+metadata:
+  name: lab-devportal-g
+  description: "Bucket S3 de teste (develop), criado pelo template aws-s3-devportal-teste"
+  annotations:
+    github.com/project-slug: bonett-labs/lab-devportal-g
+    devportal.io/github-workflow: devops-terraform-apply.yaml
+    devportal.io/github-branch: develop
+spec:
+  type: s3-bucket
+  owner: platform-team

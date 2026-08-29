@@ -1,0 +1,82 @@
+name: Terraform Apply
+
+on:
+  push:
+    branches: [develop, release, master]
+  # Permite rodar manualmente pela aba Actions ("Run workflow"). Ao
+  # disparar assim, é preciso escolher a branch no seletor da própria
+  # tela — é essa escolha que decide o ambiente (definir-variaveis usa
+  # github.ref_name), igual já acontece no push.
+  workflow_dispatch:
+
+jobs:
+  definir-variaveis:
+    name: terraform / definir-variaveis
+    runs-on: ubuntu-latest
+    outputs:
+      ambiente: ${{ steps.set.outputs.ambiente }}
+    steps:
+      - name: definir-variaveis
+        id: set
+        run: |
+          case "${{ github.ref_name }}" in
+            develop) echo "ambiente=dev" >> "$GITHUB_OUTPUT" ;;
+            release) echo "ambiente=hml" >> "$GITHUB_OUTPUT" ;;
+            master)  echo "ambiente=prd" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  execucao-terraform:
+    name: terraform / execucao-terraform
+    needs: definir-variaveis
+    runs-on: ubuntu-latest
+    env:
+      AMBIENTE: ${{ needs.definir-variaveis.outputs.ambiente }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: execucao-terraform
+        working-directory: infra
+        run: |
+          terraform init
+          terraform apply -auto-approve
+
+      - name: guardar-state
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-state
+          path: |
+            infra/.terraform
+            infra/terraform.tfstate
+          retention-days: 1
+
+  verificacao-status:
+    name: terraform / verificacao-status
+    needs: execucao-terraform
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: baixar-state
+        uses: actions/download-artifact@v4
+        with:
+          name: terraform-state
+          path: infra
+
+      - name: verificacao-status
+        working-directory: infra
+        # O download-artifact perde a permissão de execução dos binários
+        # de provider dentro de .terraform (bug conhecido do
+        # upload/download-artifact com zip) — por isso o "terraform init"
+        # roda de novo aqui, só pra rebaixar os providers com a
+        # permissão certa. Não mexe em infraestrutura nenhuma, só usa o
+        # terraform.tfstate (esse sim vindo do artifact) pra mostrar o
+        # estado real já aplicado.
+        run: |
+          terraform init
+          terraform show
